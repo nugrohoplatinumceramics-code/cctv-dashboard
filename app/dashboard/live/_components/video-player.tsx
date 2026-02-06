@@ -54,6 +54,26 @@ export function VideoPlayer({ camera, streamMode = 'sub', paused = false }: Vide
   const streamUrl = streamMode === 'sub' && camera.subRtspUrl ? camera.subRtspUrl : camera.rtspUrl;
   const streamType = getStreamType(streamUrl);
 
+  const stopCurrentStream = useCallback((video: HTMLVideoElement) => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+
+    loadingRef.current = false;
+    setIsLoading(false);
+    setIsPlaying(false);
+  }, []);
+
   // Ref callback to capture video element when it mounts
   const videoRefCallback = useCallback((node: HTMLVideoElement | null) => {
     if (node) {
@@ -209,6 +229,11 @@ export function VideoPlayer({ camera, streamMode = 'sub', paused = false }: Vide
       return;
     }
 
+    if (paused) {
+      stopCurrentStream(videoElement);
+      return;
+    }
+
     console.log(`[VideoPlayer] useEffect triggered for: ${camera.name}, videoElement ready`);
     initializedRef.current = true;
     initializeStream(videoElement);
@@ -222,7 +247,26 @@ export function VideoPlayer({ camera, streamMode = 'sub', paused = false }: Vide
         hlsRef.current = null;
       }
     };
-  }, [videoElement, initializeStream, retryCount, camera.name]);
+  }, [videoElement, initializeStream, retryCount, camera.name, paused, stopCurrentStream]);
+
+  useEffect(() => {
+    if (!videoElement) return;
+
+    if (paused) {
+      stopCurrentStream(videoElement);
+      return;
+    }
+
+    const streamAlreadyAttached = videoElement.currentSrc || videoElement.src;
+    if (!streamAlreadyAttached) {
+      initializeStream(videoElement);
+      return;
+    }
+
+    if (!isLoading && !error) {
+      videoElement.play().then(() => setIsPlaying(true)).catch(() => {});
+    }
+  }, [paused, videoElement, isLoading, error, initializeStream, stopCurrentStream]);
 
   useEffect(() => {
     if (!videoElement) return;
