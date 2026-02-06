@@ -52,13 +52,14 @@ export async function PUT(
     await requireAdmin();
     const { id } = params;
     const body = await req.json();
-    const { name, rtspUrl, description, groupId, recordingEnabled, isActive, status } = body;
+    const { name, rtspUrl, subRtspUrl, description, groupId, recordingEnabled, isActive, status } = body;
 
     const camera = await prisma.camera.update({
       where: { id },
       data: {
         ...(name && { name }),
         ...(rtspUrl && { rtspUrl }),
+        ...(subRtspUrl !== undefined && { subRtspUrl: subRtspUrl || null }),
         ...(description !== undefined && { description }),
         ...(groupId !== undefined && { groupId: groupId || null }),
         ...(recordingEnabled !== undefined && { recordingEnabled }),
