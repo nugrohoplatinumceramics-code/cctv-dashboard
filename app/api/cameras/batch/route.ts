@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 interface CameraInput {
   name: string;
   rtspUrl: string;
+  subRtspUrl?: string;
   description?: string;
   groupId?: string;
 }
@@ -47,6 +48,7 @@ export async function POST(req: Request) {
           data: {
             name: cam.name.trim(),
             rtspUrl: cam.rtspUrl.trim(),
+            subRtspUrl: cam.subRtspUrl?.trim() || null,
             description: cam.description?.trim() || null,
             groupId: cam.groupId || groupId || null,
             status: 'OFFLINE',

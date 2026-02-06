@@ -26,8 +26,13 @@ interface ExtendedCameraGroup extends CameraGroup {
   children?: { id: string; name: string; color: string }[];
 }
 
+type CameraWithStreams = CameraType & {
+  group: CameraGroup | null;
+  subRtspUrl?: string | null;
+};
+
 interface LiveCameraGridProps {
-  cameras: (CameraType & { group: CameraGroup | null })[];
+  cameras: CameraWithStreams[];
   groups: ExtendedCameraGroup[];
 }
 
@@ -42,8 +47,8 @@ export function LiveCameraGrid({ cameras: initialCameras, groups }: LiveCameraGr
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
   const [cameras] = useState(initialCameras);
   const [currentPage, setCurrentPage] = useState(1);
-  const [gridLayout, setGridLayout] = useState<GridLayout>('3x3');
-  const [expandedCamera, setExpandedCamera] = useState<(CameraType & { group: CameraGroup | null }) | null>(null);
+  const [gridLayout, setGridLayout] = useState<GridLayout>('2x2');
+  const [expandedCamera, setExpandedCamera] = useState<CameraWithStreams | null>(null);
 
   const camerasPerPage = GRID_CONFIG[gridLayout].total;
 
@@ -291,7 +296,7 @@ export function LiveCameraGrid({ cameras: initialCameras, groups }: LiveCameraGr
           <div className="flex-1 bg-black">
             {expandedCamera && (
               <div className="w-full h-[calc(90vh-80px)]">
-                <VideoPlayer camera={expandedCamera} key={`expanded-${expandedCamera.id}`} />
+                <VideoPlayer camera={expandedCamera} streamMode="main" key={`expanded-${expandedCamera.id}`} />
               </div>
             )}
           </div>
@@ -307,7 +312,7 @@ export function LiveCameraGrid({ cameras: initialCameras, groups }: LiveCameraGr
             onClick={() => setExpandedCamera(camera)}
           >
             <div className="relative aspect-video bg-slate-950">
-              <VideoPlayer camera={camera} />
+              <VideoPlayer camera={camera} streamMode="sub" paused={!!expandedCamera} />
               {/* Expand button overlay */}
               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
                 <div className="opacity-0 group-hover:opacity-100 transition-opacity">

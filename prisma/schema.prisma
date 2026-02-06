@@ -120,7 +120,8 @@ model CameraGroup {
 model Camera {
   id          String        @id @default(cuid())
   name        String
-  rtspUrl     String
+  rtspUrl     String        // Main stream URL
+  subRtspUrl  String?       // Sub stream URL (used for grid/live preview)
   description String?
   groupId     String?
   status      CameraStatus  @default(OFFLINE)

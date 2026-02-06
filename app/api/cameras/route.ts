@@ -47,7 +47,7 @@ export async function POST(req: Request) {
   try {
     await requireAdmin();
     const body = await req.json();
-    const { name, rtspUrl, description, groupId, recordingEnabled } = body;
+    const { name, rtspUrl, subRtspUrl, description, groupId, recordingEnabled } = body;
 
     if (!name || !rtspUrl) {
       return NextResponse.json(
@@ -61,6 +61,7 @@ export async function POST(req: Request) {
         name,
         rtspUrl,
         description,
+        subRtspUrl: subRtspUrl || null,
         groupId: groupId || null,
         recordingEnabled: recordingEnabled || false,
         status: 'OFFLINE',
