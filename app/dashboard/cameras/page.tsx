@@ -24,12 +24,12 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Camera, Plus, Pencil, Trash2, Circle, Upload, FileText, Download, FolderOpen, Folder } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 
 interface Camera {
   id: string;
   name: string;
   rtspUrl: string;
+  subRtspUrl?: string;
   description?: string;
   groupId?: string;
   status: string;
@@ -55,6 +55,7 @@ export default function CamerasManagementPage() {
   const [formData, setFormData] = useState({
     name: '',
     rtspUrl: '',
+    subRtspUrl: '',
     description: '',
     groupId: '',
     recordingEnabled: false,
@@ -66,8 +67,6 @@ export default function CamerasManagementPage() {
   const [batchGroupId, setBatchGroupId] = useState('');
   const [batchLoading, setBatchLoading] = useState(false);
   const [batchPreview, setBatchPreview] = useState<{ name: string; url: string }[]>([]);
-
-  const router = useRouter();
 
   useEffect(() => {
     fetchCameras();
@@ -166,6 +165,7 @@ export default function CamerasManagementPage() {
     setFormData({
       name: camera.name,
       rtspUrl: camera.rtspUrl,
+      subRtspUrl: camera.subRtspUrl || '',
       description: camera.description || '',
       groupId: camera.groupId || '',
       recordingEnabled: camera.recordingEnabled,
@@ -183,6 +183,7 @@ export default function CamerasManagementPage() {
     setFormData({
       name: '',
       rtspUrl: '',
+      subRtspUrl: '',
       description: '',
       groupId: '',
       recordingEnabled: false,
@@ -225,6 +226,7 @@ export default function CamerasManagementPage() {
           cameras: batchPreview.map(cam => ({
             name: cam.name,
             rtspUrl: cam.url,
+            subRtspUrl: cam.url,
           })),
           groupId: batchGroupId === 'no-group' ? null : batchGroupId || null,
         }),
@@ -310,13 +312,22 @@ Camera 4,http://server.com/hls/stream.m3u8`;
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="rtspUrl">RTSP URL *</Label>
+                  <Label htmlFor="rtspUrl">Main Stream URL *</Label>
                   <Input
                     id="rtspUrl"
                     value={formData.rtspUrl}
                     onChange={(e) => setFormData({ ...formData, rtspUrl: e.target.value })}
-                    placeholder="rtsp://username:password@host:554/stream"
+                    placeholder="rtsp://username:password@host:554/main"
                     required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="subRtspUrl">Sub Stream URL (opsional)</Label>
+                  <Input
+                    id="subRtspUrl"
+                    value={formData.subRtspUrl}
+                    onChange={(e) => setFormData({ ...formData, subRtspUrl: e.target.value })}
+                    placeholder="rtsp://username:password@host:554/sub"
                   />
                 </div>
                 <div className="space-y-2">
@@ -544,6 +555,10 @@ Nama Kamera 3,rtmp://live.server.com/stream`}
                       </Badge>
                     </div>
                     <p className="text-xs text-slate-400">{camera.description}</p>
+                    <p className="text-xs text-slate-500 mt-1 break-all">Main: {camera.rtspUrl}</p>
+                    {camera.subRtspUrl && (
+                      <p className="text-xs text-slate-500 break-all">Sub: {camera.subRtspUrl}</p>
+                    )}
                     {camera.group && (
                       <p className="text-xs text-slate-500 mt-1">Group: {camera.group.name}</p>
                     )}

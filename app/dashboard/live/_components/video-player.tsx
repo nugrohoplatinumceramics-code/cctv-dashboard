@@ -2,12 +2,16 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Camera, Download, Video as VideoIcon, AlertCircle, RefreshCw, Play, Volume2, VolumeX } from 'lucide-react';
+import { Download, Video as VideoIcon, AlertCircle, RefreshCw, Play, Volume2, VolumeX } from 'lucide-react';
 import type { Camera as CameraType } from '@prisma/client';
 import Hls from 'hls.js';
 
+type CameraWithStreams = CameraType & { subRtspUrl?: string | null };
+
 interface VideoPlayerProps {
-  camera: CameraType;
+  camera: CameraWithStreams;
+  streamMode?: 'sub' | 'main';
+  paused?: boolean;
 }
 
 // Detect stream type from URL
@@ -34,7 +38,7 @@ function getStreamType(url: string): 'hls' | 'rtmp' | 'rtsp' | 'direct' | 'unkno
   return 'unknown';
 }
 
-export function VideoPlayer({ camera }: VideoPlayerProps) {
+export function VideoPlayer({ camera, streamMode = 'sub', paused = false }: VideoPlayerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -47,7 +51,28 @@ export function VideoPlayer({ camera }: VideoPlayerProps) {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const initializedRef = useRef(false);
 
-  const streamType = getStreamType(camera.rtspUrl);
+  const streamUrl = streamMode === 'sub' && camera.subRtspUrl ? camera.subRtspUrl : camera.rtspUrl;
+  const streamType = getStreamType(streamUrl);
+
+  const stopCurrentStream = useCallback((video: HTMLVideoElement) => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+
+    loadingRef.current = false;
+    setIsLoading(false);
+    setIsPlaying(false);
+  }, []);
 
   // Ref callback to capture video element when it mounts
   const videoRefCallback = useCallback((node: HTMLVideoElement | null) => {
@@ -69,7 +94,6 @@ export function VideoPlayer({ camera }: VideoPlayerProps) {
     loadingRef.current = true;
     setError(null);
 
-    const streamUrl = camera.rtspUrl;
 
     // Cleanup previous HLS instance
     if (hlsRef.current) {
@@ -77,7 +101,7 @@ export function VideoPlayer({ camera }: VideoPlayerProps) {
       hlsRef.current = null;
     }
 
-    console.log(`[VideoPlayer] Camera: ${camera.name}, URL: ${streamUrl}, Type: ${streamType}`);
+    console.log(`[VideoPlayer] Camera: ${camera.name}, Mode: ${streamMode}, URL: ${streamUrl}, Type: ${streamType}`);
 
     // Timeout untuk loading - jika 15 detik tidak ada response, tampilkan error
     timeoutRef.current = setTimeout(() => {
@@ -97,14 +121,17 @@ export function VideoPlayer({ camera }: VideoPlayerProps) {
     // HLS Stream
     if (streamType === 'hls' || streamUrl.includes('.m3u8')) {
       if (Hls.isSupported()) {
+        const isSubStreamMode = streamMode === 'sub';
         const hls = new Hls({
           enableWorker: true,
           lowLatencyMode: true,
-          backBufferLength: 90,
-          manifestLoadingTimeOut: 10000,
-          manifestLoadingMaxRetry: 2,
-          levelLoadingTimeOut: 10000,
-          fragLoadingTimeOut: 20000,
+          backBufferLength: isSubStreamMode ? 12 : 60,
+          manifestLoadingTimeOut: isSubStreamMode ? 5000 : 10000,
+          manifestLoadingMaxRetry: isSubStreamMode ? 1 : 2,
+          levelLoadingTimeOut: isSubStreamMode ? 5000 : 10000,
+          levelLoadingMaxRetry: isSubStreamMode ? 1 : 2,
+          fragLoadingTimeOut: isSubStreamMode ? 8000 : 20000,
+          fragLoadingMaxRetry: isSubStreamMode ? 1 : 2,
         });
         hlsRef.current = hls;
 
@@ -196,12 +223,17 @@ export function VideoPlayer({ camera }: VideoPlayerProps) {
         setIsLoading(false);
       });
     }
-  }, [camera.rtspUrl, streamType]);
+  }, [camera.id, camera.name, streamMode, streamType, streamUrl]);
 
   useEffect(() => {
     // Only initialize when video element is available and not already initialized
     if (!videoElement) {
       console.log(`[VideoPlayer] Waiting for video element: ${camera.name}`);
+      return;
+    }
+
+    if (paused) {
+      stopCurrentStream(videoElement);
       return;
     }
 
@@ -218,7 +250,26 @@ export function VideoPlayer({ camera }: VideoPlayerProps) {
         hlsRef.current = null;
       }
     };
-  }, [videoElement, initializeStream, retryCount, camera.name]);
+  }, [videoElement, initializeStream, retryCount, camera.name, paused, stopCurrentStream]);
+
+  useEffect(() => {
+    if (!videoElement) return;
+
+    if (paused) {
+      stopCurrentStream(videoElement);
+      return;
+    }
+
+    const streamAlreadyAttached = videoElement.currentSrc || videoElement.src;
+    if (!streamAlreadyAttached) {
+      initializeStream(videoElement);
+      return;
+    }
+
+    if (!isLoading && !error) {
+      videoElement.play().then(() => setIsPlaying(true)).catch(() => {});
+    }
+  }, [paused, videoElement, isLoading, error, initializeStream, stopCurrentStream]);
 
   const handleRetry = () => {
     setRetryCount(prev => prev + 1);
@@ -314,7 +365,7 @@ export function VideoPlayer({ camera }: VideoPlayerProps) {
             </p>
             <div className="bg-slate-800 rounded p-2 mb-3">
               <p className="text-xs text-slate-300 break-all font-mono">
-                {camera.rtspUrl}
+                {streamUrl}
               </p>
             </div>
             <p className="text-xs text-slate-500">
