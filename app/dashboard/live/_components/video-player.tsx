@@ -121,14 +121,17 @@ export function VideoPlayer({ camera, streamMode = 'sub', paused = false }: Vide
     // HLS Stream
     if (streamType === 'hls' || streamUrl.includes('.m3u8')) {
       if (Hls.isSupported()) {
+        const isSubStreamMode = streamMode === 'sub';
         const hls = new Hls({
           enableWorker: true,
           lowLatencyMode: true,
-          backBufferLength: 90,
-          manifestLoadingTimeOut: 10000,
-          manifestLoadingMaxRetry: 2,
-          levelLoadingTimeOut: 10000,
-          fragLoadingTimeOut: 20000,
+          backBufferLength: isSubStreamMode ? 12 : 60,
+          manifestLoadingTimeOut: isSubStreamMode ? 5000 : 10000,
+          manifestLoadingMaxRetry: isSubStreamMode ? 1 : 2,
+          levelLoadingTimeOut: isSubStreamMode ? 5000 : 10000,
+          levelLoadingMaxRetry: isSubStreamMode ? 1 : 2,
+          fragLoadingTimeOut: isSubStreamMode ? 8000 : 20000,
+          fragLoadingMaxRetry: isSubStreamMode ? 1 : 2,
         });
         hlsRef.current = hls;
 
