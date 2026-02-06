@@ -1,0 +1,226 @@
+// CCTV Dashboard Schema
+generator client {
+    provider = "prisma-client-js"
+    binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+    output = "/home/ubuntu/cctv_dashboard/nextjs_space/node_modules/.prisma/client"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+// User roles
+enum UserRole {
+  ADMIN
+  USER
+}
+
+// Camera status
+enum CameraStatus {
+  ONLINE
+  OFFLINE
+  ERROR
+}
+
+// Recording status
+enum RecordingStatus {
+  RECORDING
+  STOPPED
+  COMPLETED
+  FAILED
+}
+
+// Alert types
+enum AlertType {
+  CAMERA_OFFLINE
+  CAMERA_ONLINE
+  RECORDING_STARTED
+  RECORDING_STOPPED
+  RECORDING_FAILED
+  SYSTEM_ERROR
+}
+
+// NextAuth required models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// User model
+model User {
+  id               String    @id @default(cuid())
+  name             String?
+  email            String    @unique
+  emailVerified    DateTime?
+  password         String?
+  role             UserRole  @default(USER)
+  canAccessPlayback Boolean  @default(true)
+  image            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  accounts            Account[]
+  sessions            Session[]
+  cameraPermissions   UserCameraPermission[]
+  createdRecordings   Recording[]
+  createdSnapshots    Snapshot[]
+  acknowledgedAlerts  Alert[]
+}
+
+// Camera Groups (with parent-child hierarchy)
+model CameraGroup {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  color       String?  @default("#3B82F6")
+  order       Int      @default(0)
+  parentId    String?  // Parent group ID (null = top-level group)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent   CameraGroup?  @relation("GroupHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children CameraGroup[] @relation("GroupHierarchy")
+  cameras  Camera[]
+
+  @@index([parentId])
+}
+
+// Cameras
+model Camera {
+  id          String        @id @default(cuid())
+  name        String
+  rtspUrl     String
+  description String?
+  groupId     String?
+  status      CameraStatus  @default(OFFLINE)
+  isActive    Boolean       @default(true)
+  order       Int           @default(0)
+  
+  // Additional camera settings
+  recordingEnabled Boolean @default(false)
+  snapshotInterval Int?    @default(300)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  lastOnline  DateTime?
+
+  group               CameraGroup?           @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  userPermissions     UserCameraPermission[]
+  recordings          Recording[]
+  snapshots           Snapshot[]
+  alerts              Alert[]
+
+  @@index([groupId])
+  @@index([status])
+}
+
+// User Camera Permissions
+model UserCameraPermission {
+  id        String   @id @default(cuid())
+  userId    String
+  cameraId  String
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  camera Camera @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, cameraId])
+  @@index([userId])
+  @@index([cameraId])
+}
+
+// Recordings
+model Recording {
+  id          String          @id @default(cuid())
+  cameraId    String
+  userId      String
+  filename    String
+  filepath    String
+  duration    Int?
+  fileSize    BigInt?
+  status      RecordingStatus @default(RECORDING)
+  startTime   DateTime        @default(now())
+  endTime     DateTime?
+  hlsPlaylist String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  camera Camera @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([cameraId])
+  @@index([userId])
+  @@index([startTime])
+}
+
+// Snapshots
+model Snapshot {
+  id        String   @id @default(cuid())
+  cameraId  String
+  userId    String
+  filename  String
+  filepath  String
+  fileSize  BigInt?
+  
+  createdAt DateTime @default(now())
+
+  camera Camera @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([cameraId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Alerts/Notifications
+model Alert {
+  id             String    @id @default(cuid())
+  type           AlertType
+  cameraId       String?
+  title          String
+  message        String
+  isRead         Boolean   @default(false)
+  acknowledgedBy String?
+  acknowledgedAt DateTime?
+  
+  createdAt      DateTime  @default(now())
+
+  camera              Camera? @relation(fields: [cameraId], references: [id], onDelete: SetNull)
+  acknowledgedByUser  User?   @relation(fields: [acknowledgedBy], references: [id], onDelete: SetNull)
+
+  @@index([cameraId])
+  @@index([isRead])
+  @@index([createdAt])
+}
