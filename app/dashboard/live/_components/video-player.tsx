@@ -268,6 +268,20 @@ export function VideoPlayer({ camera, streamMode = 'sub', paused = false }: Vide
     }
   }, [paused, videoElement, isLoading, error, initializeStream, stopCurrentStream]);
 
+  useEffect(() => {
+    if (!videoElement) return;
+
+    if (paused) {
+      videoElement.pause();
+      setIsPlaying(false);
+      return;
+    }
+
+    if (!isLoading && !error) {
+      videoElement.play().then(() => setIsPlaying(true)).catch(() => {});
+    }
+  }, [paused, videoElement, isLoading, error]);
+
   const handleRetry = () => {
     setRetryCount(prev => prev + 1);
   };
