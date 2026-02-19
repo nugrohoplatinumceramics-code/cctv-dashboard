@@ -60,14 +60,14 @@ Dashboard ini mendukung layout **2x2** (4 kamera) dan **3x3** (9 kamera) per hal
 sudo apt update && sudo apt upgrade -y
 ```
 
-### 2. Install Node.js 18.x
+### 2. Install Node.js 20.x
 
 ```bash
 # Install curl jika belum ada
 sudo apt install -y curl
 
 # Setup NodeSource repository untuk Node.js 18.x
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 
 # Install Node.js
 sudo apt install -y nodejs
