@@ -41,7 +41,36 @@ export async function checkCameraAccess(userId: string, cameraId: string) {
     },
   });
 
-  return !!permission;
+  if (permission) return true;
+
+  const camera = await prisma.camera.findUnique({
+    where: { id: cameraId },
+    select: { groupId: true },
+  });
+
+  if (!camera?.groupId) return false;
+
+  const groupPermissions = await prisma.userCameraGroupPermission.findMany({
+    where: { userId },
+    select: { groupId: true },
+  });
+  if (groupPermissions.length === 0) return false;
+
+  const allowedGroupIds = new Set(groupPermissions.map((p) => p.groupId));
+  if (allowedGroupIds.has(camera.groupId)) return true;
+
+  const groups = await prisma.cameraGroup.findMany({
+    select: { id: true, parentId: true },
+  });
+  const groupMap = new Map(groups.map((g) => [g.id, g.parentId]));
+
+  let currentParentId = groupMap.get(camera.groupId);
+  while (currentParentId) {
+    if (allowedGroupIds.has(currentParentId)) return true;
+    currentParentId = groupMap.get(currentParentId) || null;
+  }
+
+  return false;
 }
 
 export async function getUserAccessibleCameras(userId: string) {
@@ -61,19 +90,59 @@ export async function getUserAccessibleCameras(userId: string) {
   }
 
   // Regular user can only see cameras they have permission to
-  const permissions = await prisma.userCameraPermission.findMany({
-    where: {
-      userId,
-      camera: {
-        isActive: true,
-      },
-    },
-    include: {
-      camera: {
-        include: { group: true },
-      },
-    },
-  });
+  const [cameraPermissions, groupPermissions] = await Promise.all([
+    prisma.userCameraPermission.findMany({
+      where: { userId },
+      select: { cameraId: true },
+    }),
+    prisma.userCameraGroupPermission.findMany({
+      where: { userId },
+      select: { groupId: true },
+    }),
+  ]);
 
-  return permissions.map((p: any) => p.camera).filter((c: any) => c !== null);
+  const allowedCameraIds = cameraPermissions.map((p) => p.cameraId);
+  const allowedGroupIds = new Set(groupPermissions.map((p) => p.groupId));
+
+  if (allowedGroupIds.size > 0) {
+    const groups = await prisma.cameraGroup.findMany({
+      select: { id: true, parentId: true },
+    });
+    const childrenMap = new Map<string, string[]>();
+
+    for (const group of groups) {
+      if (!group.parentId) continue;
+      const children = childrenMap.get(group.parentId) || [];
+      children.push(group.id);
+      childrenMap.set(group.parentId, children);
+    }
+
+    const queue = Array.from(allowedGroupIds);
+    while (queue.length > 0) {
+      const currentGroupId = queue.shift()!;
+      const childIds = childrenMap.get(currentGroupId) || [];
+      for (const childId of childIds) {
+        if (!allowedGroupIds.has(childId)) {
+          allowedGroupIds.add(childId);
+          queue.push(childId);
+        }
+      }
+    }
+  }
+
+  if (allowedCameraIds.length === 0 && allowedGroupIds.size === 0) {
+    return [];
+  }
+
+  return await prisma.camera.findMany({
+    where: {
+      isActive: true,
+      OR: [
+        ...(allowedCameraIds.length > 0 ? [{ id: { in: allowedCameraIds } }] : []),
+        ...(allowedGroupIds.size > 0 ? [{ groupId: { in: Array.from(allowedGroupIds) } }] : []),
+      ],
+    },
+    include: { group: true },
+    orderBy: [{ groupId: 'asc' }, { order: 'asc' }, { name: 'asc' }],
+  });
 }
