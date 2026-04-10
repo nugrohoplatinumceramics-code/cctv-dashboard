@@ -92,6 +92,7 @@ model User {
   accounts            Account[]
   sessions            Session[]
   cameraPermissions   UserCameraPermission[]
+  groupPermissions    UserCameraGroupPermission[]
   createdRecordings   Recording[]
   createdSnapshots    Snapshot[]
   acknowledgedAlerts  Alert[]
@@ -111,8 +112,24 @@ model CameraGroup {
   parent   CameraGroup?  @relation("GroupHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children CameraGroup[] @relation("GroupHierarchy")
   cameras  Camera[]
+  userPermissions UserCameraGroupPermission[]
 
   @@index([parentId])
+}
+
+// User Camera Group Permissions
+model UserCameraGroupPermission {
+  id        String   @id @default(cuid())
+  userId    String
+  groupId   String
+  createdAt DateTime @default(now())
+
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group  CameraGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, groupId])
+  @@index([userId])
+  @@index([groupId])
 }
 
 // Cameras

@@ -19,7 +19,7 @@ export async function GET() {
         canAccessPlayback: true,
         createdAt: true,
         _count: {
-          select: { cameraPermissions: true },
+          select: { cameraPermissions: true, groupPermissions: true },
         },
       },
       orderBy: { createdAt: 'desc' },
