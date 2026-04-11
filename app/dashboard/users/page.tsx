@@ -86,6 +86,7 @@ export default function UsersManagementPage() {
   const [userPermissions, setUserPermissions] = useState<string[]>([]);
   const [userGroupPermissions, setUserGroupPermissions] = useState<string[]>([]);
   const [permissionLoading, setPermissionLoading] = useState(false);
+  const [groupFetchError, setGroupFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -122,13 +123,17 @@ export default function UsersManagementPage() {
 
   const fetchAllGroups = async () => {
     try {
+      setGroupFetchError(null);
       const res = await fetch('/api/groups');
       if (res.ok) {
         const data = await res.json();
         setAllGroups(data || []);
+      } else {
+        setGroupFetchError('Gagal mengambil data group kamera');
       }
     } catch (error) {
       console.error('Failed to fetch groups:', error);
+      setGroupFetchError('Gagal mengambil data group kamera');
     }
   };
 
@@ -164,6 +169,8 @@ export default function UsersManagementPage() {
     setPermissionLoading(true);
     try {
       await Promise.all([
+        fetchAllCameras(),
+        fetchAllGroups(),
         fetchUserPermissions(user.id),
         fetchUserGroupPermissions(user.id),
       ]);
@@ -255,6 +262,22 @@ export default function UsersManagementPage() {
     } catch (error) {
       console.error('Group permission change error:', error);
       alert('Failed to update group permission');
+    }
+  };
+
+  const handleSelectAllGroups = async () => {
+    if (!permissionUser) return;
+    for (const group of allGroups) {
+      if (!userGroupPermissions.includes(group.id)) {
+        await handleGroupPermissionChange(group.id, true);
+      }
+    }
+  };
+
+  const handleDeselectAllGroups = async () => {
+    if (!permissionUser) return;
+    for (const groupId of userGroupPermissions) {
+      await handleGroupPermissionChange(groupId, false);
     }
   };
 
@@ -516,7 +539,7 @@ export default function UsersManagementPage() {
                         size="sm"
                         variant="outline"
                         onClick={() => openPermissionDialog(user)}
-                        title="Atur Akses Kamera"
+                        title="Atur Akses Kamera & Group"
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
@@ -549,10 +572,10 @@ export default function UsersManagementPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Camera className="h-5 w-5" />
-              Akses Kamera - {permissionUser?.name}
+              Akses Kamera & Group - {permissionUser?.name}
             </DialogTitle>
             <DialogDescription>
-              Pilih kamera mana saja yang dapat diakses oleh user ini. Admin dapat melihat semua kamera secara otomatis.
+              Pilih group kamera dan/atau kamera spesifik yang dapat diakses oleh user ini. Admin dapat melihat semua kamera secara otomatis.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -567,6 +590,17 @@ export default function UsersManagementPage() {
                   <p className="text-xs text-slate-400 mb-3">
                     User akan mendapat akses ke semua kamera pada group yang dipilih (termasuk subgroup).
                   </p>
+                  <div className="flex gap-2 mb-3">
+                    <Button size="sm" variant="outline" onClick={handleSelectAllGroups}>
+                      Pilih Semua Group
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleDeselectAllGroups}>
+                      Hapus Semua Group
+                    </Button>
+                  </div>
+                  {groupFetchError && (
+                    <p className="text-xs text-red-400 mb-2">{groupFetchError}</p>
+                  )}
                   <div className="space-y-2 max-h-[220px] overflow-y-auto pr-2">
                     {allGroups.length === 0 ? (
                       <p className="text-slate-400 text-center py-4">Belum ada group kamera</p>
