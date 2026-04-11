@@ -35,6 +35,7 @@ interface UserType {
   createdAt: string;
   _count?: {
     cameraPermissions: number;
+    groupPermissions: number;
   };
 }
 
@@ -49,6 +50,19 @@ interface CameraPermission {
   id: string;
   cameraId: string;
   camera: CameraType;
+}
+
+interface GroupType {
+  id: string;
+  name: string;
+  color?: string;
+  parentId?: string | null;
+}
+
+interface GroupPermission {
+  id: string;
+  groupId: string;
+  group: GroupType;
 }
 
 export default function UsersManagementPage() {
@@ -68,12 +82,16 @@ export default function UsersManagementPage() {
   const [isPermissionOpen, setIsPermissionOpen] = useState(false);
   const [permissionUser, setPermissionUser] = useState<UserType | null>(null);
   const [allCameras, setAllCameras] = useState<CameraType[]>([]);
+  const [allGroups, setAllGroups] = useState<GroupType[]>([]);
   const [userPermissions, setUserPermissions] = useState<string[]>([]);
+  const [userGroupPermissions, setUserGroupPermissions] = useState<string[]>([]);
   const [permissionLoading, setPermissionLoading] = useState(false);
+  const [groupFetchError, setGroupFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchUsers();
     fetchAllCameras();
+    fetchAllGroups();
   }, []);
 
   const fetchUsers = async () => {
@@ -103,9 +121,24 @@ export default function UsersManagementPage() {
     }
   };
 
+  const fetchAllGroups = async () => {
+    try {
+      setGroupFetchError(null);
+      const res = await fetch('/api/groups');
+      if (res.ok) {
+        const data = await res.json();
+        setAllGroups(data || []);
+      } else {
+        setGroupFetchError('Gagal mengambil data group kamera');
+      }
+    } catch (error) {
+      console.error('Failed to fetch groups:', error);
+      setGroupFetchError('Gagal mengambil data group kamera');
+    }
+  };
+
   const fetchUserPermissions = async (userId: string) => {
     try {
-      setPermissionLoading(true);
       const res = await fetch(`/api/users/${userId}/permissions`);
       if (res.ok) {
         const data = await res.json();
@@ -114,15 +147,36 @@ export default function UsersManagementPage() {
       }
     } catch (error) {
       console.error('Failed to fetch user permissions:', error);
-    } finally {
-      setPermissionLoading(false);
+    }
+  };
+
+  const fetchUserGroupPermissions = async (userId: string) => {
+    try {
+      const res = await fetch(`/api/users/${userId}/group-permissions`);
+      if (res.ok) {
+        const data = await res.json();
+        const groupIds = data?.map((p: GroupPermission) => p.groupId) || [];
+        setUserGroupPermissions(groupIds);
+      }
+    } catch (error) {
+      console.error('Failed to fetch user group permissions:', error);
     }
   };
 
   const openPermissionDialog = async (user: UserType) => {
     setPermissionUser(user);
     setIsPermissionOpen(true);
-    await fetchUserPermissions(user.id);
+    setPermissionLoading(true);
+    try {
+      await Promise.all([
+        fetchAllCameras(),
+        fetchAllGroups(),
+        fetchUserPermissions(user.id),
+        fetchUserGroupPermissions(user.id),
+      ]);
+    } finally {
+      setPermissionLoading(false);
+    }
   };
 
   const handlePermissionChange = async (cameraId: string, checked: boolean) => {
@@ -174,6 +228,56 @@ export default function UsersManagementPage() {
     if (!permissionUser) return;
     for (const cameraId of userPermissions) {
       await handlePermissionChange(cameraId, false);
+    }
+  };
+
+  const handleGroupPermissionChange = async (groupId: string, checked: boolean) => {
+    if (!permissionUser) return;
+
+    try {
+      if (checked) {
+        const res = await fetch(`/api/users/${permissionUser.id}/group-permissions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ groupId }),
+        });
+        if (res.ok) {
+          setUserGroupPermissions(prev => [...prev, groupId]);
+        } else {
+          const data = await res.json();
+          alert(data?.error || 'Failed to add group permission');
+        }
+      } else {
+        const res = await fetch(`/api/users/${permissionUser.id}/group-permissions?groupId=${groupId}`, {
+          method: 'DELETE',
+        });
+        if (res.ok) {
+          setUserGroupPermissions(prev => prev.filter(id => id !== groupId));
+        } else {
+          const data = await res.json();
+          alert(data?.error || 'Failed to remove group permission');
+        }
+      }
+      fetchUsers();
+    } catch (error) {
+      console.error('Group permission change error:', error);
+      alert('Failed to update group permission');
+    }
+  };
+
+  const handleSelectAllGroups = async () => {
+    if (!permissionUser) return;
+    for (const group of allGroups) {
+      if (!userGroupPermissions.includes(group.id)) {
+        await handleGroupPermissionChange(group.id, true);
+      }
+    }
+  };
+
+  const handleDeselectAllGroups = async () => {
+    if (!permissionUser) return;
+    for (const groupId of userGroupPermissions) {
+      await handleGroupPermissionChange(groupId, false);
     }
   };
 
@@ -420,6 +524,8 @@ export default function UsersManagementPage() {
                     <p className="text-xs text-slate-400">{user.email}</p>
                     <p className="text-xs text-slate-500 mt-1">
                       {user._count?.cameraPermissions || 0} camera permissions
+                      {' • '}
+                      {user._count?.groupPermissions || 0} group permissions
                       {user.role === 'USER' && (
                         <span className="ml-2">
                           • Playback: {user.canAccessPlayback ? '✓' : '✗'}
@@ -433,7 +539,7 @@ export default function UsersManagementPage() {
                         size="sm"
                         variant="outline"
                         onClick={() => openPermissionDialog(user)}
-                        title="Atur Akses Kamera"
+                        title="Atur Akses Kamera & Group"
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
@@ -466,10 +572,10 @@ export default function UsersManagementPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Camera className="h-5 w-5" />
-              Akses Kamera - {permissionUser?.name}
+              Akses Kamera & Group - {permissionUser?.name}
             </DialogTitle>
             <DialogDescription>
-              Pilih kamera mana saja yang dapat diakses oleh user ini. Admin dapat melihat semua kamera secara otomatis.
+              Pilih group kamera dan/atau kamera spesifik yang dapat diakses oleh user ini. Admin dapat melihat semua kamera secara otomatis.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -479,6 +585,57 @@ export default function UsersManagementPage() {
               </div>
             ) : (
               <>
+                <div className="mb-6">
+                  <h4 className="text-sm font-semibold text-white mb-2">Akses Group Kamera</h4>
+                  <p className="text-xs text-slate-400 mb-3">
+                    User akan mendapat akses ke semua kamera pada group yang dipilih (termasuk subgroup).
+                  </p>
+                  <div className="flex gap-2 mb-3">
+                    <Button size="sm" variant="outline" onClick={handleSelectAllGroups}>
+                      Pilih Semua Group
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleDeselectAllGroups}>
+                      Hapus Semua Group
+                    </Button>
+                  </div>
+                  {groupFetchError && (
+                    <p className="text-xs text-red-400 mb-2">{groupFetchError}</p>
+                  )}
+                  <div className="space-y-2 max-h-[220px] overflow-y-auto pr-2">
+                    {allGroups.length === 0 ? (
+                      <p className="text-slate-400 text-center py-4">Belum ada group kamera</p>
+                    ) : (
+                      allGroups.map((group) => (
+                        <div
+                          key={group.id}
+                          className="flex items-center gap-3 p-3 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors"
+                        >
+                          <Checkbox
+                            id={`group-${group.id}`}
+                            checked={userGroupPermissions.includes(group.id)}
+                            onCheckedChange={(checked) => handleGroupPermissionChange(group.id, checked as boolean)}
+                          />
+                          <div className="flex items-center gap-2 flex-1">
+                            <div
+                              className="h-2.5 w-2.5 rounded-full"
+                              style={{ backgroundColor: group.color || '#3B82F6' }}
+                            />
+                            <div>
+                              <p className="text-sm font-medium text-white">{group.name}</p>
+                              <p className="text-xs text-slate-400">
+                                {group.parentId ? 'Subgroup' : 'Group utama'}
+                              </p>
+                            </div>
+                          </div>
+                          <Badge variant={userGroupPermissions.includes(group.id) ? 'default' : 'secondary'}>
+                            {userGroupPermissions.includes(group.id) ? 'Aktif' : 'Non-aktif'}
+                          </Badge>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
                 <div className="flex gap-2 mb-4">
                   <Button size="sm" variant="outline" onClick={handleSelectAllCameras}>
                     Pilih Semua
